@@ -205,17 +205,6 @@ void decode_file(const string& input_path, const string& output_path) {
             else if (bytes_to_write == 2) error_code = decode_duplet(char_block, pos_block, out_bytes);
             else                          error_code = decode_triplet(char_block, pos_block, out_bytes);
             if (error_code > 0) {
-                /*total_errors++;
-                int idx = error_code - 1; // Індекс помилки
-                cerr << "Error: Invalid character '" << char_block[idx] << "' at line " << line_number_block[idx] << "' at position " << pos_block[idx] << " (replaced with *)" << endl;
-                char temp_char = char_block[idx];
-                char_block[idx] = 'A';
-                if (bytes_to_write == 1)      decode_symbol(char_block, pos_block, out_bytes);
-                else if (bytes_to_write == 2) decode_duplet(char_block, pos_block, out_bytes);
-                else                          decode_triplet(char_block, pos_block, out_bytes);
-                if (idx == 0 || idx == 1) out_bytes[0] = '*';
-                else if (idx == 2)        out_bytes[1] = '*';
-                else if (idx == 3)        out_bytes[2] = '*'; decode_triplet(char_block, pos_block, out_bytes);*/
                 int idx = error_code - 1;
                 cerr << "Error: Invalid character '" << char_block[idx] << "' at line " << line_number_block[idx] << ", position " << pos_block[idx] << ". Stopping." << endl;
                 char error_marker = '*';
