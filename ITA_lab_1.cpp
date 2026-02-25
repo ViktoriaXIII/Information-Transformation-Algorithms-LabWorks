@@ -148,20 +148,51 @@ void decode_file(const string& input_path, const string& output_path) {
     }
     char char_block[4];       // 4 символи Base64
     long long pos_block[4];   // Їх позиції
+    int line_number_block[4]; // Номер рядка для кожного символу
     int count = 0;            // Заповнення блоку
-    long long global_pos = 0; // Глобальна позиція байта
+    int line_char_count = 0;  // Символи у поточному рядку
+    int total_errors = 0;     // Усі знайдені помилки
+    int line_count = 1;       // Поточний номер рядка
+    bool padding_found = false; // Чи зустрічали ми вже '='
     char c;
     while (in.get(c)) {
-        global_pos++;
-        if (c == '-') { // Пропуск коментарів
+        if (c == '-' && line_char_count == 0) { // Пропуск коментарів 
             string com;
             getline(in, com);
-            global_pos += com.length();
+            out.put('-'); // Копіюємо коментар
+            out.write(com.c_str(), com.length());
+            out.put('\n');
+            line_count++;
+            continue;
+        }
+        if (c == '\n') {
+            // У рядку <= 76 символів
+            // in.peek() => чи є далі ще дані
+            if (line_char_count != 76 && in.peek() != EOF) {
+                cerr << "Error!!! Incorrect line length (" << line_char_count << " chars) at line " << line_count << endl;
+                return;
+            }
+            line_count++;
+            line_char_count = 0;
             continue;
         }
         if (isspace(c)) continue; // Пропуск пробілів, табуляції та переносів
+        if (padding_found) {
+            cerr << "Error: Incorrect padding usage at line " << line_count << ", position " << line_char_count + 1 << endl;
+            return;
+        }
+
+        if (c == '=') {
+            if (count < 2) {
+                cerr << "Error: Incorrect padding usage at line " << line_count << ", position " << line_char_count + 1 << endl;
+                return;
+            }
+            padding_found = true;
+        }
+        line_char_count++;
         char_block[count] = c;
-        pos_block[count] = global_pos;
+        pos_block[count] = line_char_count;
+        line_number_block[count] = line_count;
         count++;
         if (count == 4) {
             unsigned char out_bytes[3] = { 0, 0, 0 };
@@ -172,25 +203,39 @@ void decode_file(const string& input_path, const string& output_path) {
             else bytes_to_write = 3;                           // ХХХ
             if (bytes_to_write == 1)      error_code = decode_symbol(char_block, pos_block, out_bytes);
             else if (bytes_to_write == 2) error_code = decode_duplet(char_block, pos_block, out_bytes);
-            else
-                if (error_code > 0) {
-                    int idx = error_code - 1; // Індекс помилки
-                    cerr << "Error: Invalid character '" << char_block[idx] << "' at position " << pos_block[idx] << " (replaced with *)" << endl;
-                    char temp_char = char_block[idx];
-                    char_block[idx] = 'A';
-                    if (bytes_to_write == 1)      decode_symbol(char_block, pos_block, out_bytes);
-                    else if (bytes_to_write == 2) decode_duplet(char_block, pos_block, out_bytes);
-                    else                          decode_triplet(char_block, pos_block, out_bytes);
-                    if (idx == 0 || idx == 1) out_bytes[0] = '*';
-                    else if (idx == 2)        out_bytes[1] = '*';
-                    else if (idx == 3)        out_bytes[2] = '*'; decode_triplet(char_block, pos_block, out_bytes);
-                }
+            else                          error_code = decode_triplet(char_block, pos_block, out_bytes);
+            if (error_code > 0) {
+                /*total_errors++;
+                int idx = error_code - 1; // Індекс помилки
+                cerr << "Error: Invalid character '" << char_block[idx] << "' at line " << line_number_block[idx] << "' at position " << pos_block[idx] << " (replaced with *)" << endl;
+                char temp_char = char_block[idx];
+                char_block[idx] = 'A';
+                if (bytes_to_write == 1)      decode_symbol(char_block, pos_block, out_bytes);
+                else if (bytes_to_write == 2) decode_duplet(char_block, pos_block, out_bytes);
+                else                          decode_triplet(char_block, pos_block, out_bytes);
+                if (idx == 0 || idx == 1) out_bytes[0] = '*';
+                else if (idx == 2)        out_bytes[1] = '*';
+                else if (idx == 3)        out_bytes[2] = '*'; decode_triplet(char_block, pos_block, out_bytes);*/
+                int idx = error_code - 1;
+                cerr << "Error: Invalid character '" << char_block[idx] << "' at line " << line_number_block[idx] << ", position " << pos_block[idx] << ". Stopping." << endl;
+                char error_marker = '*';
+                out.write(&error_marker, 1);
+                in.close();
+                out.close();
+                return;
+            }
             out.write(reinterpret_cast<char*>(out_bytes), bytes_to_write);
             count = 0;
         }
     }
     in.close();
     out.close();
+    if (total_errors > 0) {
+        cout << "\nDecoding finished with " << total_errors << " error(s) found." << endl;
+    }
+    else {
+        cout << "\nDecoding finished successfully without errors." << endl;
+    }
 }
 
 int main()
@@ -228,12 +273,11 @@ int main()
         }
     }
     if (mode == 1) {
-        encode_file(in_f, out_f);
+        encode_file(in_f, out_f, comment_text);
         cout << "\nEncoded file is done!" << out_f << endl;
     }
     else if (mode == 2) {
         decode_file(in_f, out_f);
-        cout << "\nDecoded file is done!" << out_f << endl;
     }
     else {
         cout << "Wrong mode!\n";
