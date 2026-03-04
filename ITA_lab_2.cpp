@@ -78,18 +78,23 @@ void decode_RLE(const string& in_f, const string& out_f) {
             // Гетеро-блок
             int count = static_cast<int>(L) + 1;
             vector<char> buffer(count);
-            if (in.read(buffer.data(), count)) {
-                out.write(buffer.data(), count);
+            in.read(buffer.data(), count);
+            if (in.gcount() < count) { // Чи достатньо байтів для L?
+                cerr << "\nError!!! Corrupted RLE header. " << "Expected " << count << " bytes, but found only " << in.gcount() << "." << endl;
+                break;
             }
+            out.write(buffer.data(), count);
         }
         else {
             // Гомо-блок
             int count = static_cast<int>(L) - 126;
             char byte_to_repeat;
-            if (in.get(byte_to_repeat)) {
-                for (int j = 0; j < count; ++j) {
-                    out.put(byte_to_repeat);
-                }
+            if (!in.get(byte_to_repeat)) { // Чи існує байтвзагалі?
+                cerr << "\nError!!! Unexpected end of file after homo-command." << endl;
+                break;
+            }
+            for (int j = 0; j < count; ++j) {
+                out.put(byte_to_repeat);
             }
         }
     }
@@ -97,15 +102,14 @@ void decode_RLE(const string& in_f, const string& out_f) {
     out.close();
 }
 
-int main()
-{
+int main(){
     int mode, name;
     string in_f, out_f;
     cout << "1. Encode the file (RLE)\n2. Decode RLE-file\nChoice: ";
     cin >> mode;
     cout << "Enter the name of the input file: ";
     cin >> in_f;
-    cout << "\nHow to name output file?\n1. To enter manually\n2. To create automatically (.rle or .bin)\nChoice: ";
+    cout << "\nHow to name output file?\n1. To enter manually\n2. To create automatically\nChoice: ";
     cin >> name;
     if (name == 1) {
         cout << "Enter the name of the output file: ";
@@ -116,11 +120,22 @@ int main()
             out_f = in_f + ".rle";
         }
         else {
-            if (in_f.size() > 4 && in_f.substr(in_f.size() - 4) == ".rle") {
-                out_f = in_f.substr(0, in_f.size() - 4);
-                out_f = "decoded_" + out_f;
+            out_f = in_f;
+            if (out_f.size() > 4 && out_f.substr(out_f.size() - 4) == ".rle") {
+                out_f.erase(out_f.size() - 4);
+            }
+            size_t dot_pos = out_f.find_last_of(".");
+            if (dot_pos != string::npos) {
+                out_f.insert(dot_pos, "_decoded");
+            }
+            else {
+                out_f += "_decoded";
             }
         }
+    }
+    if (in_f == out_f) {
+        cerr << "Error: Output file name would be same as input! Operation aborted." << endl;
+        return 1;
     }
     if (mode == 1) {
         encode_RLE(in_f, out_f);
