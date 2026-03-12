@@ -11,7 +11,7 @@ private:
     uint8_t buffer; // Тимчасовий байт для накопичення бітів
     int curPos; // Поточна позиція у buffer
     bool isWriting;
-    void clearBuffer() {
+    void fillBuffer() {
         if (curPos > 0) {
             file.put(buffer);
             buffer = 0;
@@ -24,7 +24,7 @@ public:
         isWriting = (mode & ios::out);
     }
     ~BitStream() {
-        if (isWriting) clearBuffer(); // Вирівнювання '0-ми при закритті
+        if (isWriting) fillBuffer(); // Вирівнювання '0-ми при закритті
         if (file.is_open()) file.close();
     }
     void WriteBitSequence(const vector<uint8_t>& data, int bitCount) {
