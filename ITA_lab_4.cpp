@@ -5,116 +5,162 @@
 #include <fstream>
 #include <vector>
 #include <memory>
+#include <cstdint>
 
 using namespace std;
 
 struct Node {
-    char leef;
+    uint8_t leaf;
     int freq;
     shared_ptr<Node> left, right;
-    Node (unsigned char l, int f) : leef(l), freq(f), left(nullptr), right(nullptr) {}
-    Node (int f, shared_ptr<Node> left, shared_ptr<Node> right) : leef(0), freq(f), left(left), right(right) {}
+    Node (uint8_t l, int f) : leaf(l), freq(f), left(nullptr), right(nullptr) {}
+    Node (shared_ptr<Node> left, shared_ptr<Node> right) : leaf(0), freq(left->freq + right->freq), left(left), right(right) {}
 };
 
 struct compare {
-    bool operator()(shared_ptr<Node> l, shared_ptr<Node> r) {
+    bool operator()(const shared_ptr<Node>& l, const shared_ptr<Node>& r) const {
+        if (l->freq == r->freq) return l->leaf > r->leaf;
         return l->freq > r->freq;
     }
 };
 
-void createCodes(shared_ptr<Node> root, string str, unordered_map<unsigned char, string>& HuffmanCode) {
-    if (!root) return;
-    if (!root->left && !root->right) { // Знайшли листок?
-        HuffmanCode[root->leef] = str;
+void createCodes(shared_ptr<Node> root, const string& prefix, unordered_map<uint8_t, string>& HuffmanCode) {
+    if (!root->left && !root->right) {
+        HuffmanCode[root->leaf] = prefix.empty() ? "0" : prefix;
+        return;
     }
-    createCodes(root->left, str + "0", HuffmanCode);
-    createCodes(root->right, str + "1", HuffmanCode);
+    createCodes(root->left, prefix + "0", HuffmanCode);
+    createCodes(root->right, prefix + "1", HuffmanCode);
+}
+
+void buildTree(shared_ptr<Node> node, ostream& out) {
+    if (!node->left && !node->right) {
+        uint8_t flag = 1;
+        out.write((char*)&flag, 1);
+        out.write((char*)&node->leaf, 1);
+    }
+    else {
+        uint8_t flag = 0;
+        out.write((char*)&flag, 1);
+        buildTree(node->left, out);
+        buildTree(node->right, out);
+    }
+}
+
+shared_ptr<Node> readTree(istream& in) {
+    uint8_t flag;
+    in.read((char*)&flag, 1);
+    if (flag == 1) {
+        uint8_t b;
+        in.read((char*)&b, 1);
+        return make_shared<Node>(b, 0);
+    }
+    auto left = readTree(in);
+    auto right = readTree(in);
+    return make_shared<Node>(left, right);
 }
 
 class WriteBits {
-    ofstream out;
-    unsigned char buffer = 0;
+    ostream& out;
+    uint8_t buffer = 0;
     int count = 0;
 public:
-    WriteBits(const string& path) : out(path, ios::binary) {}
-    void writeBit(char bit) {
-        buffer <<= 1;
-        if (bit == '1') buffer |= 1;
+    WriteBits(ostream& os) : out(os) {}
+    void writeBit(int bit) {
+        buffer |= (bit & 1) << (7 - count);
         if (++count == 8) {
             out.put(buffer);
             buffer = 0;
             count = 0;
         }
     }
+    void writeCode(const string& s) {
+        for (char c : s) writeBit(c == '1');
+    }
     void flush() {
-        if (count > 0) out.put(buffer << (8 - count));
-        out.close();
+        if (count > 0) out.put(buffer);
     }
 };
 
-void compressFile(string inPath, string outPath) {
+class ReadBits {
+    istream& in;
+    uint8_t buffer = 0;
+    int count = 8;
+public: 
+    ReadBits(istream& is) : in(is) {}
+    int readBit() {
+        if (count == 8) {
+            if (!in.read((char*)&buffer, 1)) return -1;
+            count = 0;
+        }
+        return (buffer >> (7 - count++)) & 1;
+    }
+};
+
+void compressFile(const string& inPath, const string& outPath) {
     ifstream in(inPath, ios::binary);
     if (!in) return;
-    unordered_map<unsigned char, int> freq;
-    unsigned char leef;
-    int total = 0;
-    while (in.read(reinterpret_cast<char*>(&leef), 1)) {
-        freq[leef]++;
-        total++;
+    unordered_map<uint8_t, int> freq;
+    vector<uint8_t> data;
+    uint8_t b;
+    while (in.read((char*)&b, 1)) {
+        freq[b]++;
+        data.push_back(b);
     }
-    if (total == 0) return;
     priority_queue<shared_ptr<Node>, vector<shared_ptr<Node>>, compare> queue;
-    for (auto i = freq.begin(); i != freq.end(); i++) {
-        unsigned char val = i->first;
-        int count = i->second;
-        queue.push(make_shared<Node>(val, count));
+    for (auto& p : freq) {
+        queue.push(make_shared<Node>(p.first, p.second));
     }
+    if (queue.empty()) return;
     while (queue.size() > 1) {
         auto l = queue.top(); queue.pop();
         auto r = queue.top(); queue.pop();
-        queue.push(make_shared<Node>(l->freq + r->freq, l, r));
+        queue.push(make_shared<Node>(l, r));
     }
-    unordered_map<unsigned char, string> codes;
-    createCodes(queue.top(), "", codes);
+    auto root = queue.top();
+    unordered_map<uint8_t, string> codes;
+    createCodes(root, "", codes);
     ofstream out(outPath, ios::binary);
-    int mapSize = freq.size();
-    out.write(reinterpret_cast<char*>(&mapSize), sizeof(mapSize));
-    out.write(reinterpret_cast<char*>(&total), sizeof(total));
-    for (auto const& pair : freq) {
-        const unsigned char& val = pair.first;
-        const int& count = pair.second;
-        out.write(reinterpret_cast<const char*>(&val), 1);
-        out.write(reinterpret_cast<const char*>(&count), sizeof(count));
-    }
-    in.clear();
-    in.seekg(0);
-    WriteBits bw(outPath);
-    while(in.read(reinterpret_cast<char*>(&leef), 1)) {
-        string code = codes[leef];
-        for (char b : code) {
-            bw.writeBit(b);
-        }
-    }
+    buildTree(root, out);
+    uint32_t total = data.size();
+    out.write((char*)&total, sizeof(total));
+    uint32_t bitCount = 0;
+    for (auto x : data) bitCount += codes[x].size();
+    out.write((char*)&bitCount, sizeof(bitCount));
+    WriteBits bw(out);
+    for (uint8_t x : data) bw.writeCode(codes[x]);
     bw.flush();
-    out.close();
-    in.close();
 }
 
-void runHuffman(string input, string output, bool compress) {
-    if (compress) {
-        cout << "Compressing..." << endl;
-        compressFile(input, output);
-    }
-    else {
-        cout << "Decompressing..." << endl;
-        //decompressFile(input, output);
+void decompressFile(const string& inPath, const string& outPath) {
+    ifstream in(inPath, ios::binary);
+    if (!in) return;
+    auto root = readTree(in);
+    uint32_t total;
+    in.read((char*)&total, sizeof(total));
+    uint32_t bitCount;
+    in.read((char*)&bitCount, sizeof(bitCount));
+    ofstream out(outPath, ios::binary);
+    ReadBits rb(in);
+    uint32_t readBits = 0;
+    auto node = root;
+    while (readBits < bitCount) {
+        int bit = rb.readBit();
+        if (bit < 0) break;
+        readBits++;
+        node = bit ? node->right : node->left;
+        if (!node->left && !node->right) {
+            out.put(node->leaf);
+            node = root;
+            if (--total = 0) break;
+        }
     }
 }
 
 int main()
 {
-    runHuffman("example.bmp", "example_bmp.huf", 1);
-    //runHuffman("example_bmp.huf", "example_decompressed.bmp", 0);
-    //runHuffman("example.txt", "example_txt.huf", 1);
-    //runHuffman("example_txt.huf", "example_decompressed.txt", 0);
+    compressFile("example.bmp", "example_bmp.huf");
+    decompressFile("example_bmp.huf", "example_decompressed.bmp");
+    compressFile("example.txt", "example_txt.huf");
+    decompressFile("example_txt.huf", "example_decompressed.txt");
 }
