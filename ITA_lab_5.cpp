@@ -12,9 +12,9 @@ string generate_output_filename(const string& input_file, const string& command)
         string extension = ".lzw";
         if (input_file.length() >= extension.length() &&
             input_file.compare(input_file.length() - extension.length(), extension.length(), extension) == 0) {
-            return input_file.substr(0, input_file.length() - extension.length());
+            return input_file.substr(0, input_file.length() - extension.length()) + ".dec";
         }
-        else return "decompressed_" + input_file;
+        else return input_file + ".dec";
     }
     return "";
 }
