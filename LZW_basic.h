@@ -1,22 +1,10 @@
+#pragma once
 #include <string>
 #include <fstream>
 #include <unordered_map>
 #include <vector>
 #include <cstdint>
 using namespace std;
-
-string generate_output_filename(const string& input_file, const string& command) {
-    if (command == "compress") return input_file + ".lzw";
-    else if (command == "decompress") {
-        string extension = ".lzw";
-        if (input_file.length() >= extension.length() &&
-            input_file.compare(input_file.length() - extension.length(), extension.length(), extension) == 0) {
-            return input_file.substr(0, input_file.length() - extension.length()) + ".dec";
-        }
-        else return input_file + ".dec";
-    }
-    return "";
-}
 
 void compress_LZW(const string& input_file, const string& output_file) {
     ifstream in(input_file, ios::binary);
